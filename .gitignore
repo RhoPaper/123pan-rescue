@@ -1,0 +1,14 @@
+# 本地测试产物
+.selftest/
+
+# 运行期文件
+*.log
+*.partial
+*.tmp
+.from123-state/
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/
+*.swp

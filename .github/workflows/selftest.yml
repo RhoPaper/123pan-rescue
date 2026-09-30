@@ -1,0 +1,34 @@
+name: selftest
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  selftest:
+    name: 本地假 WebDAV 全量回归
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装依赖（rclone 取最新版，老版本没有 --log-file-max-size）
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 curl util-linux
+          curl -fsSL https://rclone.org/install.sh | sudo bash
+          rclone version | head -1
+          bash --version | head -1
+
+      - name: 语法检查
+        run: |
+          bash -n 123pan-rescue.sh
+          bash -n test/selftest.sh
+          bash -n test/make-testdata.sh
+
+      - name: 生成仿真云盘
+        run: ./test/make-testdata.sh
+
+      - name: 运行自检（45 项：含中途强杀续传、清单缩水保护、并发锁等）
+        run: ./test/selftest.sh
