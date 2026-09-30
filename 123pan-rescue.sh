@@ -238,11 +238,18 @@ state_set() {  # state_set <file> key=value ...
   done
 }
 
-ensure_dirs() {
+ensure_dirs() {  # 需要写入的命令用这个：必须能建目录、必须可写
   [[ -d "$DEST" ]] || mkdir -p "$DEST" 2>/dev/null || die "无法创建目标目录：$DEST（检查路径是否存在、是否有写权限）"
   [[ -w "$DEST" ]] || die "目标目录不可写：$DEST"
   mkdir -p "$STATE_DIR" "$LOG_DIR" "$ITEM_DIR" 2>/dev/null \
     || die "无法在 $DEST 下创建状态目录（检查磁盘空间与权限）"
+}
+
+ensure_dirs_ro_ok() {  # 纯读命令（status / verify / crosscheck）用这个：
+  # 只读挂载、他人只读拷贝等场景下也应该能审计，所以不可写只警告不中止。
+  if [[ ! -d "$DEST" ]]; then ensure_dirs; return 0; fi
+  mkdir -p "$STATE_DIR" 2>/dev/null || warn "状态目录不可写（只读挂载？），仅做只读检查：$STATE_DIR"
+  return 0
 }
 
 # ============================== 密码与配置 ===================================
@@ -421,7 +428,7 @@ trap on_signal INT TERM
 HELPER_VERSION="3"
 
 write_helper() {
-  ensure_dirs
+  ensure_dirs_ro_ok      # 只读环境下也要能跑（写不进去就退回用现有 helper.py）
   local stamp="$STATE_DIR/helper.version"
   # 版本一致就不重写：既能只读环境下降级工作，也避免每次命令都动磁盘
   if [[ -f "$HELPER" && -f "$stamp" ]] && [[ "$(cat "$stamp" 2>/dev/null)" == "$HELPER_VERSION" ]]; then
@@ -1218,7 +1225,7 @@ status_row() {  # status_row <item> <附注>
 }
 
 cmd_status() {
-  ensure_dirs
+  ensure_dirs_ro_ok
   write_helper
   [[ -f "$MANIFEST_META" ]] || { warn "还没有清单，先跑 manifest"; return 1; }
   STATUS_DEEP=0
@@ -1262,7 +1269,7 @@ cmd_status() {
 }
 
 cmd_verify() {
-  ensure_dirs
+  ensure_dirs_ro_ok
   write_helper
   [[ -f "$MANIFEST_TSV" ]] || die "还没有清单。先跑： ./$SCRIPT_NAME manifest"
   log "全量对账中（比对 $DEST 与云端清单）…"
@@ -1283,7 +1290,7 @@ cmd_verify() {
 }
 
 cmd_crosscheck() {
-  ensure_dirs; write_helper
+  ensure_dirs_ro_ok; write_helper
   local tree="${1:-}"
   [[ -n "$tree" && -f "$tree" ]] || die "用法: ./$SCRIPT_NAME crosscheck <目录树.txt>"
   [[ -f "$MANIFEST_TSV" ]] || die "先跑 manifest"
