@@ -58,7 +58,7 @@ $ ./123pan-rescue.sh
 | 🧱 **清单缩水保护** | 云端索引延迟导致漏列时拒绝覆盖旧清单，避免「假三绿」 |
 | 🛡 **只增不删** | 只调用 rclone 的 `copy / copyto / lsjson / lsd`，**绝不** `sync` / `delete` |
 | 🔒 **并发保护** | 同一目标目录只允许一个实例（flock），防止手滑跑两遍烧双倍流量 |
-| 🧪 **45 项自检** | 本地起假 WebDAV 服务器跑全量回归，含「下载中途强杀再续跑」 |
+| 🧪 **47 项自检** | 本地起假 WebDAV 服务器跑全量回归，含「下载中途强杀再续跑」 |
 
 ## 依赖
 
@@ -230,7 +230,7 @@ md5sum ~/123pan/照片们/xxx.jpg
 
 ```bash
 ./test/make-testdata.sh     # 生成仿真云盘（中文名 / 空格 / 引号 / emoji / 15 层嵌套 / 单目录 3000 文件 / 200MB 大文件 / 空目录）
-./test/selftest.sh          # 起本地 rclone WebDAV 服务器，跑 45 项用例
+./test/selftest.sh          # 起本地 rclone WebDAV 服务器，跑 47 项用例
 ```
 
 自检覆盖：语法与「无危险调用」静态断言、体检正常路径、密码错误、**认证失败不污染配置**、主机不可达、
@@ -248,7 +248,7 @@ dry-run 演练、并发锁、status / crosscheck。
 
 ## 贡献
 
-欢迎 Issue / PR。改动请先跑 `./test/selftest.sh`，保持 45 项全绿。
+欢迎 Issue / PR。改动请先跑 `./test/selftest.sh`，保持 47 项全绿。
 
 ## License
 

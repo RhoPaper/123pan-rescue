@@ -23,7 +23,7 @@ interrupt checkpoints + full reconciliation**.
 - 🧱 **Manifest shrink guard** — a truncated (index-lagged) listing is refused instead of silently reported as "all good".
 - 🛡 **Never deletes** — only `copy / copyto / lsjson / lsd` are used; `sync` and `delete` are never called.
 - 🔒 **Single-instance lock** — `flock` prevents accidentally running two transfers against the same destination.
-- 🧪 **45-case self-test** — spins up a local fake WebDAV server, including a "kill mid-download and resume" case.
+- 🧪 **47-case self-test** — spins up a local fake WebDAV server, including a "kill mid-download and resume" case.
 
 ## Requirements
 
@@ -102,7 +102,7 @@ size-mismatched files. WebDAV exposes no file hashes, so finish with a spot chec
 
 ```bash
 ./test/make-testdata.sh   # build a fake cloud drive with awkward names, deep nesting, a 200MB file...
-./test/selftest.sh        # start a local WebDAV server and run all 45 cases
+./test/selftest.sh        # start a local WebDAV server and run all 47 cases
 ```
 
 ## License

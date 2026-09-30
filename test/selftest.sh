@@ -357,6 +357,20 @@ fi
 # 目录树缺失时不应崩
 if run_main crosscheck >/dev/null 2>&1; then bad "缺少参数时 crosscheck 竟成功了"; else ok "crosscheck 缺参数时正确报错"; fi
 
+# ------------------------------------------------- T17 --dest 参数
+head2 "T17 --dest 必须同时搬移状态目录（清单/断点/日志）"
+DEST5="$BASE/dest-flag"; rm -rf "$DEST5"
+if run_main -d "$DEST5" preflight > "$BASE/t17.out" 2>&1 \
+   && run_main -d "$DEST5" manifest >> "$BASE/t17.out" 2>&1; then
+  [[ -f "$DEST5/.from123-state/manifest.tsv" ]] \
+    && ok "状态目录跟随 -d 落在新目标下" \
+    || bad "状态目录没跟随 -d（会写进默认目录）"
+else
+  bad "--dest 参数流程失败" "$(tail -3 "$BASE/t17.out")"
+fi
+# 旧的默认目录不该被创建
+[[ -d "$HOME/123pan" ]] && bad "竟然写到了默认目录 ~/123pan" || ok "没有污染默认目录"
+
 # ---------------------------------------------------------------- 汇总
 head2 "汇总"
 printf '  PASS=%d  FAIL=%d\n' "$PASS" "$FAIL"

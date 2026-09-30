@@ -139,22 +139,27 @@ REMOTE_NAME="pan123"
 ROOT_ITEM="__ROOT__"           # 伪条目：我的文件根目录下的散装文件
 STATE_SUBDIR=".from123-state"  # 状态目录名（会被 rclone 排除，不会被当成云端内容）
 
-STATE_DIR="$DEST/$STATE_SUBDIR"
-LOG_DIR="$STATE_DIR/logs"
-ITEM_DIR="$STATE_DIR/items"
-RCLONE_CONF="$STATE_DIR/rclone.conf"
-MANIFEST_TSV="$STATE_DIR/manifest.tsv"
-MANIFEST_META="$STATE_DIR/manifest.meta"
-ROOTFILES="$STATE_DIR/rootfiles.txt"
-CHECKPOINT="$STATE_DIR/checkpoint.txt"
-SUMMARY="$STATE_DIR/summary.txt"
-VERIFY_REPORT="$STATE_DIR/verify-report.txt"
-LOCKFILE="$STATE_DIR/lock"
-SECRET_FILE="$STATE_DIR/secret"
-HELPER="$STATE_DIR/helper.py"
-PICKED_VENDOR_FILE="$STATE_DIR/vendor"
-FINGERPRINT_FILE="$STATE_DIR/conf.fingerprint"
-INFLIGHT_SNAPSHOT="$STATE_DIR/inflight-snapshot.txt"
+# 派生路径。注意：必须封装成函数并在「参数解析之后」再调一次——
+# 否则用 -d/--dest 指定的新目标目录不会同步搬到状态目录/日志/清单上（曾踩过）。
+init_paths() {
+  STATE_DIR="$DEST/$STATE_SUBDIR"
+  LOG_DIR="$STATE_DIR/logs"
+  ITEM_DIR="$STATE_DIR/items"
+  RCLONE_CONF="$STATE_DIR/rclone.conf"
+  MANIFEST_TSV="$STATE_DIR/manifest.tsv"
+  MANIFEST_META="$STATE_DIR/manifest.meta"
+  ROOTFILES="$STATE_DIR/rootfiles.txt"
+  CHECKPOINT="$STATE_DIR/checkpoint.txt"
+  SUMMARY="$STATE_DIR/summary.txt"
+  VERIFY_REPORT="$STATE_DIR/verify-report.txt"
+  LOCKFILE="$STATE_DIR/lock"
+  SECRET_FILE="$STATE_DIR/secret"
+  HELPER="$STATE_DIR/helper.py"
+  PICKED_VENDOR_FILE="$STATE_DIR/vendor"
+  FINGERPRINT_FILE="$STATE_DIR/conf.fingerprint"
+  INFLIGHT_SNAPSHOT="$STATE_DIR/inflight-snapshot.txt"
+}
+init_paths
 
 RCLONE_BIN="${RCLONE_BIN:-rclone}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
@@ -162,6 +167,18 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 CURRENT_RCLONE_PID=""
 INTERRUPTED=0
 CURRENT_ITEM=""
+
+# 意外退出时必须留下痕迹：长时间无人值守的脚本最怕"静默死亡"。
+# 130/143 是 Ctrl-C / TERM，属于预期内；这里只报真正的意外。
+on_err() {
+  local rc=$?
+  (( rc == 0 || rc == 130 || rc == 143 )) && return 0
+  # return/exit 是「有意的非零退出」（例如 status 在没清单时提示后返回 1），不算意外
+  case "${2:-}" in return*|exit*|die*|true|:) return 0 ;; esac
+  printf '%s[%s] 意外退出%s：退出码 %s（%s 第 %s 行）\n  出错命令：%s\n  提示：把这段连同日志一起反馈到 Issue。\n' \
+    "$C_DIM" "$(date '+%F %T')" "$C_RST" "$rc" "$PROG" "${1:-?}" "${2:-?}" >&2
+}
+trap 'on_err "$LINENO" "$BASH_COMMAND"' ERR
 
 # ============================== 小工具 =======================================
 log()  { (( QUIET )) && return 0; printf '%s[%s]%s %s\n' "$C_DIM" "$(date '+%F %T')" "$C_RST" "$*"; }
@@ -221,7 +238,12 @@ state_set() {  # state_set <file> key=value ...
   done
 }
 
-ensure_dirs() { mkdir -p "$DEST" "$STATE_DIR" "$LOG_DIR" "$ITEM_DIR"; }
+ensure_dirs() {
+  [[ -d "$DEST" ]] || mkdir -p "$DEST" 2>/dev/null || die "无法创建目标目录：$DEST（检查路径是否存在、是否有写权限）"
+  [[ -w "$DEST" ]] || die "目标目录不可写：$DEST"
+  mkdir -p "$STATE_DIR" "$LOG_DIR" "$ITEM_DIR" 2>/dev/null \
+    || die "无法在 $DEST 下创建状态目录（检查磁盘空间与权限）"
+}
 
 # ============================== 密码与配置 ===================================
 have_pass_source() {  # 只判断"有没有密码来源"，不调用 rclone
@@ -290,10 +312,16 @@ rclone_cmd() { "$RCLONE_BIN" --config "$RCLONE_CONF" "$@"; }
 # rclone 版本能力探测：老版本没有 --log-file-max-size，不能盲目加参数
 RCLONE_HAS_LOGSIZE=0
 rclone_check_version() {
-  local v
-  v="$("$RCLONE_BIN" version 2>/dev/null | head -1 | awk '{print $2}')"
-  RCLONE_VERSION="${v:-未知}"
-  if "$RCLONE_BIN" copy --help 2>/dev/null | grep -q -- '--log-file-max-size'; then
+  local out first firstline
+  # 注意：这里绝不能用 `rclone version | head -1` 这类管道。
+  # head 提前退出会让 rclone 收到 SIGPIPE（退出码 141），在 pipefail 下赋值失败，
+  # 而 set -e 会因此静默退出（CI 上就踩过：只打印了体检横幅，没有任何报错）。
+  out="$("$RCLONE_BIN" version 2>/dev/null || true)"
+  firstline="${out%%$'\n'*}"
+  RCLONE_VERSION="$(awk '{print $2}' <<< "$firstline")"
+  RCLONE_VERSION="${RCLONE_VERSION:-未知}"
+  out="$("$RCLONE_BIN" copy --help 2>/dev/null || true)"
+  if [[ "$out" == *--log-file-max-size* ]]; then
     RCLONE_HAS_LOGSIZE=1
   fi
   case "$RCLONE_VERSION" in
@@ -773,7 +801,7 @@ cmd_preflight() {
   command -v "$PYTHON_BIN" >/dev/null || die "找不到 python3"
   write_helper
   rclone_check_version
-  log "rclone: $("$RCLONE_BIN" version | head -1)"
+  log "rclone: v$RCLONE_VERSION"
   log "目标目录: $DEST"
 
   have_pass_source || die "没有可用密码：请先运行 $PROG init（或用 WEBDAV_PASS 环境变量）"
@@ -1542,6 +1570,7 @@ parse_args() {
   DEST="${DEST/#\~/$HOME}"
   mapfile -t PRIORITY_ITEMS < <(split_list "$PRIORITY_STR")
   mapfile -t SKIP_ITEMS     < <(split_list "$SKIP_STR")
+  init_paths                     # -d/--dest 改动后必须重算派生路径
   REMAINING=("$@")
 }
 
